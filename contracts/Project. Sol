@@ -1,1 +1,150 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
+/**
+ * @title Token-based Voting System
+ * @dev A decentralized voting platform where token holders can create and vote on proposals
+ */
+contract Project {
+    
+    // Struct to represent a proposal
+    struct Proposal {
+        uint256 id;
+        string description;
+        uint256 voteCount;
+        uint256 deadline;
+        bool executed;
+        address proposer;
+        mapping(address => bool) voters;
+    }
+    
+    // State variables
+    mapping(address => uint256) public tokens;
+    mapping(uint256 => Proposal) public proposals;
+    uint256 public proposalCount;
+    uint256 public totalSupply;
+    address public owner;
+    
+    // Events
+    event ProposalCreated(uint256 indexed proposalId, string description, address indexed proposer, uint256 deadline);
+    event Voted(uint256 indexed proposalId, address indexed voter, uint256 tokenAmount);
+    event ProposalExecuted(uint256 indexed proposalId);
+    event TokensMinted(address indexed to, uint256 amount);
+    
+    // Modifiers
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can call this function");
+        _;
+    }
+    
+    modifier hasTokens() {
+        require(tokens[msg.sender] > 0, "You must hold tokens to participate");
+        _;
+    }
+    
+    constructor() {
+        owner = msg.sender;
+        // Mint initial tokens to contract deployer
+        tokens[msg.sender] = 1000;
+        totalSupply = 1000;
+    }
+    
+    /**
+     * @dev Core Function 1: Create a new proposal
+     * @param _description Description of the proposal
+     * @param _votingPeriod Duration in seconds for voting period
+     */
+    function createProposal(string memory _description, uint256 _votingPeriod) public hasTokens {
+        require(bytes(_description).length > 0, "Description cannot be empty");
+        require(_votingPeriod >= 60, "Voting period must be at least 60 seconds");
+        
+        proposalCount++;
+        Proposal storage newProposal = proposals[proposalCount];
+        newProposal.id = proposalCount;
+        newProposal.description = _description;
+        newProposal.voteCount = 0;
+        newProposal.deadline = block.timestamp + _votingPeriod;
+        newProposal.executed = false;
+        newProposal.proposer = msg.sender;
+        
+        emit ProposalCreated(proposalCount, _description, msg.sender, newProposal.deadline);
+    }
+    
+    /**
+     * @dev Core Function 2: Vote on a proposal using tokens
+     * @param _proposalId ID of the proposal to vote on
+     */
+    function vote(uint256 _proposalId) public hasTokens {
+        require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal ID");
+        Proposal storage proposal = proposals[_proposalId];
+        
+        require(block.timestamp < proposal.deadline, "Voting period has ended");
+        require(!proposal.voters[msg.sender], "You have already voted on this proposal");
+        require(!proposal.executed, "Proposal already executed");
+        
+        uint256 voterTokens = tokens[msg.sender];
+        proposal.voteCount += voterTokens;
+        proposal.voters[msg.sender] = true;
+        
+        emit Voted(_proposalId, msg.sender, voterTokens);
+    }
+    
+    /**
+     * @dev Core Function 3: Execute a proposal if it has majority votes
+     * @param _proposalId ID of the proposal to execute
+     */
+    function executeProposal(uint256 _proposalId) public {
+        require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal ID");
+        Proposal storage proposal = proposals[_proposalId];
+        
+        require(block.timestamp >= proposal.deadline, "Voting period not yet ended");
+        require(!proposal.executed, "Proposal already executed");
+        require(proposal.voteCount > totalSupply / 2, "Proposal did not receive majority votes");
+        
+        proposal.executed = true;
+        
+        emit ProposalExecuted(_proposalId);
+    }
+    
+    // Helper function to mint tokens (for testing and distribution)
+    function mintTokens(address _to, uint256 _amount) public onlyOwner {
+        require(_to != address(0), "Cannot mint to zero address");
+        require(_amount > 0, "Amount must be greater than zero");
+        
+        tokens[_to] += _amount;
+        totalSupply += _amount;
+        
+        emit TokensMinted(_to, _amount);
+    }
+    
+    // View functions
+    function getProposalDetails(uint256 _proposalId) public view returns (
+        uint256 id,
+        string memory description,
+        uint256 voteCount,
+        uint256 deadline,
+        bool executed,
+        address proposer
+    ) {
+        require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal ID");
+        Proposal storage proposal = proposals[_proposalId];
+        
+        return (
+            proposal.id,
+            proposal.description,
+            proposal.voteCount,
+            proposal.deadline,
+            proposal.executed,
+            proposal.proposer
+        );
+    }
+    
+    function hasVoted(uint256 _proposalId, address _voter) public view returns (bool) {
+        require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal ID");
+        return proposals[_proposalId].voters[_voter];
+    }
+    
+    function getTokenBalance(address _account) public view returns (uint256) {
+        return tokens[_account];
+    }
+}
